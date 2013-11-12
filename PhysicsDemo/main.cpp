@@ -41,6 +41,7 @@ ID3DX11Effect* g_pEffect = nullptr;
 
 // Main tweak bar
 TwBar* g_pTweakBar;
+TwBar* g_pMSSBar = 0;
 
 // DirectXTK effect, input layout and primitive batch for position/color vertices
 // (for drawing multicolored & unlit primitives)
@@ -105,7 +106,7 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 {
     TwInit(TW_DIRECT3D11, pd3dDevice);
 
-    g_pTweakBar = TwNewBar("TweakBar");
+    g_pTweakBar = TwNewBar("Main");
 
     // HINT: For buttons you can directly pass the callback function as a lambda expression.
     TwAddButton(g_pTweakBar, "Reset Camera", [](void *){g_camera.Reset();}, nullptr, "");
@@ -398,6 +399,10 @@ void CALLBACK OnD3D11DestroyDevice( void* pUserContext )
 	SAFE_RELEASE(g_pEffect);
 	
     TwDeleteBar(g_pTweakBar);
+
+	if(g_pMSSBar)
+		TwDeleteBar(g_pMSSBar);
+
     g_pTweakBar = nullptr;
 	TwTerminate();
 
@@ -533,11 +538,9 @@ void DoPhysics(float dt)
     {
 		float l = (*i)->currentLength();
 		if(l == 0)
-			l = .001;
+			l = .001f;
 
 		XMVECTOR f = -(*i)->stiffness*(l - (*i)->initialLength) * ((*i)->point1->position - (*i)->point2->position) / l;
-
-		//std::cout << l << std::endl;
 
 		(*i)->point1->force += f;
 		(*i)->point2->force -= f;
@@ -663,6 +666,12 @@ void InitMassSpringSystem()
 	if (g_MassSpringSystem != 0)
 		delete g_MassSpringSystem;
 
+	if (g_pMSSBar != 0)
+		TwDeleteBar(g_pMSSBar);
+	
+	g_pMSSBar = TwNewBar("MSS");
+	TwDefine("MSS label='Mass Spring System' position='15 400' alpha=222 valueswidth=fit"); // yup magic values
+
 	g_MassSpringSystem = new MassSpringSystem;
 
 	MassPoint *mp1, *mp2;
@@ -685,6 +694,50 @@ void InitMassSpringSystem()
 	Spring* s = new Spring(mp1, mp2, 25.0f);
 	
 	g_MassSpringSystem->springs.push_back(s);
+
+	char cnt[10];
+	int cc = 0;
+	for(int i = 0; i < g_MassSpringSystem->points.size(); i++)
+	{
+		char str[255];
+
+		sprintf_s(str, "group='Mass Point %d' label='Mass'", i);
+		sprintf_s(cnt, "%d", cc++);
+		TwAddVarRW(g_pMSSBar, cnt,   TW_TYPE_FLOAT, &(g_MassSpringSystem->points[i]->mass), str);
+		sprintf_s(str, "group='Mass Point %d' label='Damping'", i);
+		sprintf_s(cnt, "%d", cc++);
+		TwAddVarRW(g_pMSSBar, cnt,   TW_TYPE_FLOAT, &(g_MassSpringSystem->points[i]->damping), str);
+
+		TwAddSeparator(g_pMSSBar, 0, 0);
+
+		sprintf_s(str, "group='Mass Point %d' label='Position'", i);
+		sprintf_s(cnt, "%d", cc++);
+		TwAddVarRW(g_pMSSBar, cnt,   TW_TYPE_DIR3F, &(g_MassSpringSystem->points[i]->position), str);
+		sprintf_s(str, "group='Mass Point %d' label='Velocity'", i);
+		sprintf_s(cnt, "%d", cc++);
+		TwAddVarRW(g_pMSSBar, cnt,   TW_TYPE_DIR3F, &(g_MassSpringSystem->points[i]->velocity), str);
+		sprintf_s(str, "group='Mass Point %d' label='Force'", i);
+		sprintf_s(cnt, "%d", cc++);
+		TwAddVarRO(g_pMSSBar, cnt,   TW_TYPE_DIR3F, &(g_MassSpringSystem->points[i]->force), str);
+	}
+
+	for(int i = 0; i < g_MassSpringSystem->springs.size(); i++)
+	{
+		char str[255];
+
+		sprintf_s(str, "group='Spring %d' label='Stiffness'", i);
+		sprintf_s(cnt, "%d", cc++);
+		TwAddVarRW(g_pMSSBar, cnt,   TW_TYPE_FLOAT, &(g_MassSpringSystem->springs[i]->stiffness), str);
+
+		TwAddSeparator(g_pMSSBar, 0, 0);
+
+		sprintf_s(str, "group='Spring %d' label='Initial Length'", i);
+		sprintf_s(cnt, "%d", cc++);
+		TwAddVarRO(g_pMSSBar, cnt,   TW_TYPE_FLOAT, &(g_MassSpringSystem->springs[i]->initialLength), str);
+		sprintf_s(str, "group='Spring %d' label='Current Length' readonly=true", i);
+		sprintf_s(cnt, "%d", cc++);
+		TwAddVarCB(g_pMSSBar, cnt,   TW_TYPE_FLOAT, 0, Spring::GetCurrentLengthCallback, g_MassSpringSystem->springs[i], str);
+	}
 }
 
 //--------------------------------------------------------------------------------------
@@ -724,7 +777,6 @@ int main(int argc, char* argv[])
 	g_camera.SetViewParams(XMLoadFloat3(&eye), XMLoadFloat3(&lookAt));
     g_camera.SetButtonMasks(MOUSE_MIDDLE_BUTTON, MOUSE_WHEEL, MOUSE_RIGHT_BUTTON);
 
-	InitMassSpringSystem();
     // Init DXUT and create device
 	DXUTInit( true, true, NULL ); // Parse the command line, show msgboxes on error, no extra command line params
 	//DXUTSetIsInGammaCorrectMode( false ); // true by default (SRGB backbuffer), disable to force a RGB backbuffer
@@ -732,6 +784,8 @@ int main(int argc, char* argv[])
 	DXUTCreateWindow( L"PhysicsDemo" );
 	DXUTCreateDevice( D3D_FEATURE_LEVEL_10_0, true, 1280, 960 );
     
+	InitMassSpringSystem();
+
 	DXUTMainLoop(); // Enter into the DXUT render loop
 
 	DXUTShutdown(); // Shuts down DXUT (includes calls to OnD3D11ReleasingSwapChain() and OnD3D11DestroyDevice())

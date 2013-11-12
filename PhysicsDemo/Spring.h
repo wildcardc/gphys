@@ -15,5 +15,10 @@ public:
 		float stiffness;
 		const float initialLength;
 		float currentLength();
+
+		static void TW_CALL GetCurrentLengthCallback(void *value, void *clientData)
+		{
+			*static_cast<float *>(value) = static_cast<Spring*>(clientData)->currentLength();
+		} 
 };
 

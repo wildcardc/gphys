@@ -64,6 +64,8 @@ XMFLOAT3 g_vfMovableObjectPos = XMFLOAT3(0,0,0);
 
 MassSpringSystem* g_MassSpringSystem = 0;
 
+bool g_bSimulationEnabled = true;
+
 // TweakAntBar GUI variables
 int   g_iNumSpheres    = 100;
 float g_fSphereSize    = 0.02f;
@@ -108,11 +110,12 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
     // HINT: For buttons you can directly pass the callback function as a lambda expression.
     TwAddButton(g_pTweakBar, "Reset Camera", [](void *){g_camera.Reset();}, nullptr, "");
 	TwAddButton(g_pTweakBar, "Reset MSS", [](void *){InitMassSpringSystem();}, nullptr, "");
+	TwAddVarRW(g_pTweakBar, "Enable Simulation",  TW_TYPE_BOOLCPP, &g_bSimulationEnabled, "");
 
-    TwAddVarRW(g_pTweakBar, "Draw Teapot",   TW_TYPE_BOOLCPP, &g_bDrawTeapot, "");
-    TwAddVarRW(g_pTweakBar, "Draw Triangle", TW_TYPE_BOOLCPP, &g_bDrawTriangle, "");
-    TwAddVarRW(g_pTweakBar, "Draw Spheres",  TW_TYPE_BOOLCPP, &g_bDrawSpheres, "");
-    TwAddVarRW(g_pTweakBar, "Num Spheres",   TW_TYPE_INT32, &g_iNumSpheres, "min=1");
+    //TwAddVarRW(g_pTweakBar, "Draw Teapot",   TW_TYPE_BOOLCPP, &g_bDrawTeapot, "");
+    //TwAddVarRW(g_pTweakBar, "Draw Triangle", TW_TYPE_BOOLCPP, &g_bDrawTriangle, "");
+    //TwAddVarRW(g_pTweakBar, "Draw Spheres",  TW_TYPE_BOOLCPP, &g_bDrawSpheres, "");
+    //TwAddVarRW(g_pTweakBar, "Num Spheres",   TW_TYPE_INT32, &g_iNumSpheres, "min=1");
     TwAddVarRW(g_pTweakBar, "Sphere Size",   TW_TYPE_FLOAT, &g_fSphereSize, "min=0.01 step=0.01");
 	TwAddVarRW(g_pTweakBar, "Gravity",   TW_TYPE_DIR3F, &g_G, "");
 	
@@ -581,11 +584,14 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext )
     // Move camera
     g_camera.FrameMove(fElapsedTime);
 
-	g_dT += fElapsedTime;
-	while(g_dT >= g_TimeStep)
+	if (g_bSimulationEnabled)
 	{
-		DoPhysics(g_TimeStep);
-		g_dT -= g_TimeStep;
+		g_dT += fElapsedTime;
+		while(g_dT >= g_TimeStep)
+		{
+			DoPhysics(g_TimeStep);
+			g_dT -= g_TimeStep;
+		}
 	}
 
     // Update effects with new view + proj transformations

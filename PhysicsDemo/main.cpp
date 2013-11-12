@@ -28,7 +28,7 @@ using namespace DirectX;
 #include "util/util.h"
 
 #include "MassSpringSystem.h"
-
+ 
 // DXUT camera
 // NOTE: CModelViewerCamera does not only manage the standard view transformation/camera position 
 //       (CModelViewerCamera::GetViewMatrix()), but also allows for model rotation
@@ -62,7 +62,7 @@ std::unique_ptr<GeometricPrimitive> g_pTeapot;
 XMINT2   g_viMouseDelta = XMINT2(0,0);
 XMFLOAT3 g_vfMovableObjectPos = XMFLOAT3(0,0,0);
 
-MassSpringSystem g_MassSpringSystem;
+MassSpringSystem* g_MassSpringSystem = 0;
 
 // TweakAntBar GUI variables
 int   g_iNumSpheres    = 100;
@@ -71,8 +71,33 @@ bool  g_bDrawTeapot    = false;
 bool  g_bDrawTriangle  = false;
 bool  g_bDrawSpheres   = false;
 
-const XMVECTOR g_G = { .0f, -9.81, .0f, .0f };
+XMVECTOR g_G = { .0f, -9.81f * .01f, .0f, .0f };
 
+float g_TimeStep = 1.0f/60.0f;
+float g_dT = .0f;
+
+ typedef enum
+ {
+	INTEGRATOR_EXPLICIT_EULER = 0,
+	INTEGRATOR_MIDPOINT,
+	
+	INTEGRATOR_LAST,
+ } Integrators;
+
+Integrators g_Integrator = INTEGRATOR_EXPLICIT_EULER;
+ 
+TwEnumVal twIntegratorEV[] = { {INTEGRATOR_EXPLICIT_EULER, "Explicit Euler"}, {INTEGRATOR_MIDPOINT, "Midpoint"} };
+TwType integratorType;
+
+
+void Euler(float, MassPoint*);
+void MidPoint(float, MassPoint*);
+
+typedef void(*IntegratorPtr)(float, MassPoint*);
+IntegratorPtr IntegratorFuncs[] = { &Euler, &MidPoint};
+
+
+void InitMassSpringSystem();
 // Create TweakBar and add required buttons and variables
 void InitTweakBar(ID3D11Device* pd3dDevice)
 {
@@ -82,12 +107,17 @@ void InitTweakBar(ID3D11Device* pd3dDevice)
 
     // HINT: For buttons you can directly pass the callback function as a lambda expression.
     TwAddButton(g_pTweakBar, "Reset Camera", [](void *){g_camera.Reset();}, nullptr, "");
+	TwAddButton(g_pTweakBar, "Reset MSS", [](void *){InitMassSpringSystem();}, nullptr, "");
 
     TwAddVarRW(g_pTweakBar, "Draw Teapot",   TW_TYPE_BOOLCPP, &g_bDrawTeapot, "");
     TwAddVarRW(g_pTweakBar, "Draw Triangle", TW_TYPE_BOOLCPP, &g_bDrawTriangle, "");
     TwAddVarRW(g_pTweakBar, "Draw Spheres",  TW_TYPE_BOOLCPP, &g_bDrawSpheres, "");
     TwAddVarRW(g_pTweakBar, "Num Spheres",   TW_TYPE_INT32, &g_iNumSpheres, "min=1");
     TwAddVarRW(g_pTweakBar, "Sphere Size",   TW_TYPE_FLOAT, &g_fSphereSize, "min=0.01 step=0.01");
+	TwAddVarRW(g_pTweakBar, "Gravity",   TW_TYPE_DIR3F, &g_G, "");
+	
+	integratorType = TwDefineEnum("IntegratorType", twIntegratorEV, INTEGRATOR_LAST);
+	TwAddVarRW(g_pTweakBar, "Integrator", integratorType, &g_Integrator, NULL);
 }
 
 // Draw the edges of the bounding box [-0.5;0.5]³ rotated with the cameras model tranformation.
@@ -168,12 +198,12 @@ void DrawMSS(ID3D11DeviceContext* pd3dImmediateContext)
     std::mt19937 eng;
     std::uniform_real_distribution<float> randCol( 0.0f, 1.0f);
 
-	for (auto i = g_MassSpringSystem.points.begin(); i != g_MassSpringSystem.points.end(); i++)
+	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
     {
         // Setup position/normal effect (per object variables)
         g_pEffectPositionNormal->SetDiffuseColor(0.6f * XMColorHSVToRGB(XMVectorSet(randCol(eng), 1, 1, 0)));
         XMMATRIX scale    = XMMatrixScaling(g_fSphereSize, g_fSphereSize, g_fSphereSize);
-        XMMATRIX trans    = XMMatrixTranslation(XMVectorGetX(i->position), XMVectorGetY(i->position), XMVectorGetZ(i->position));
+        XMMATRIX trans    = XMMatrixTranslation(XMVectorGetX((*i)->position), XMVectorGetY((*i)->position), XMVectorGetZ((*i)->position));
         g_pEffectPositionNormal->SetWorld(scale * trans * g_camera.GetWorldMatrix());
 
         // Draw
@@ -181,22 +211,18 @@ void DrawMSS(ID3D11DeviceContext* pd3dImmediateContext)
         g_pSphere->Draw(g_pEffectPositionNormal, g_pInputLayoutPositionNormal);
     }
 
-
-
-
 	g_pEffectPositionColor->SetWorld(g_camera.GetWorldMatrix());
-    
     g_pEffectPositionColor->Apply(pd3dImmediateContext);
     pd3dImmediateContext->IASetInputLayout(g_pInputLayoutPositionColor);
 
     // Draw
     g_pPrimitiveBatchPositionColor->Begin();
 
-	for (auto i = g_MassSpringSystem.springs.begin(); i != g_MassSpringSystem.springs.end(); i++)
+	for (auto i = g_MassSpringSystem->springs.begin(); i != g_MassSpringSystem->springs.end(); i++)
 	{
 		g_pPrimitiveBatchPositionColor->DrawLine(
-			VertexPositionColor(i->point1->position, Colors::Blue),
-			VertexPositionColor(i->point2->position, Colors::Blue));
+			VertexPositionColor((*i)->point1->position, Colors::Blue),
+			VertexPositionColor((*i)->point2->position, Colors::Blue));
 	}
 
     g_pPrimitiveBatchPositionColor->End();
@@ -363,6 +389,9 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
 //--------------------------------------------------------------------------------------
 void CALLBACK OnD3D11DestroyDevice( void* pUserContext )
 {
+	if (g_MassSpringSystem != 0)
+			delete g_MassSpringSystem;
+
 	SAFE_RELEASE(g_pEffect);
 	
     TwDeleteBar(g_pTweakBar);
@@ -490,51 +519,74 @@ LRESULT CALLBACK MsgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
 	return 0;
 }
 
-void DoPhysics(double dt)
+void DoPhysics(float dt)
 {
-	for (auto i = g_MassSpringSystem.points.begin(); i != g_MassSpringSystem.points.end(); i++)
+	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
     {
-		i->force = g_G * i->mass * .005f;
+		(*i)->force = g_G * (*i)->mass;
 	}
 
-	for (auto i = g_MassSpringSystem.springs.begin(); i != g_MassSpringSystem.springs.end(); i++)
+	for (auto i = g_MassSpringSystem->springs.begin(); i != g_MassSpringSystem->springs.end(); i++)
     {
-		float l = i->currentLength();
+		float l = (*i)->currentLength();
 		if(l == 0)
 			l = .001;
 
-		XMVECTOR f = -i->stiffness*(l - i->initialLength) * (i->point1->position - i->point2->position) / l;
+		XMVECTOR f = -(*i)->stiffness*(l - (*i)->initialLength) * ((*i)->point1->position - (*i)->point2->position) / l;
 
-		i->point1->force += f;
-		i->point2->force -= f;
+		//std::cout << l << std::endl;
+
+		(*i)->point1->force += f;
+		(*i)->point2->force -= f;
 	}
 
-	for (auto i = g_MassSpringSystem.points.begin(); i != g_MassSpringSystem.points.end(); i++)
+	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
     {
-		//F = m*a; a = F/m
-		XMVECTOR a = (i->force)/i->mass; // where do i go!  - i->damping*i->velocity
+		IntegratorFuncs[g_Integrator](g_TimeStep, *i);
 
-		XMVECTOR vnew = i->velocity + a*dt;
-		i->position += vnew * dt;
-		i->velocity = vnew;
-
-		// bounary check -y
-		if(XMVectorGetY(i->position) < -.5f)
-			i->position = XMVectorSetY(i->position, -.5f);
+		// boundary check -y
+		if(XMVectorGetY((*i)->position) < -.5f)
+			(*i)->position = XMVectorSetY((*i)->position, -.5f);
 	}
+}
+
+void Euler(float dt, MassPoint* mp)
+{
+	// F = m*a; a = F/m
+	// F = F + Fd
+	// Fd = -d*v
+	XMVECTOR a = ( mp->force - mp->damping*mp->velocity ) / mp->mass;
+
+	mp->position += mp->velocity * dt;
+	mp->velocity += a * dt;
+}
+
+void MidPoint(float dt, MassPoint* mp)
+{
+	XMVECTOR a = ( mp->force - mp->damping*mp->velocity ) / mp->mass;
+
+	XMVECTOR ytilde = mp->position + dt/2 * mp->velocity;
+	//XMVECTOR vel_midpoint = mp->velocity + a_midpoint*dt/2; // this needs to calc a_midpoint with a "re-entrant" force calc somehow, if we are even right about how this should work
+	
+	//mp->position += dt * 
 }
 
 //--------------------------------------------------------------------------------------
 // Handle updates to the scene
 //--------------------------------------------------------------------------------------
-void CALLBACK OnFrameMove( double dTime, float fElapsedTime, void* pUserContext )
+void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext )
 {
 	UpdateWindowTitle(L"PhysicsDemo");
 
     // Move camera
     g_camera.FrameMove(fElapsedTime);
 
-	DoPhysics(fElapsedTime);
+	g_dT += fElapsedTime;
+	while(g_dT >= g_TimeStep)
+	{
+		DoPhysics(g_TimeStep);
+		g_dT -= g_TimeStep;
+	}
 
     // Update effects with new view + proj transformations
     g_pEffectPositionColor->SetView       (g_camera.GetViewMatrix());
@@ -602,26 +654,31 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 
 void InitMassSpringSystem()
 {
-	MassPoint mp1, mp2;
+	if (g_MassSpringSystem != 0)
+		delete g_MassSpringSystem;
 
-	mp1.mass = 2.0f;
-	mp1.damping = 2.2f;
-	mp1.position = XMVectorSet(.1f,.1f,.1f,1.0f);
-	mp1.velocity = XMVectorSet(.0f,.0f,.0f,.0f);
+	g_MassSpringSystem = new MassSpringSystem;
 
-	mp2.mass = 2.0f;
-	mp2.damping = 2.2f;
-	mp2.position = XMVectorSet(.1f,.2f,.1f,1.0f);
-	mp2.velocity = XMVectorSet(.0f,.0f,.0f,.0f); // note this is not zero
+	MassPoint *mp1, *mp2;
 
-	// maybe fix this value copy some time
+	mp1 = new MassPoint;
+	mp1->mass = 2.0f;
+	mp1->damping = 1.0f;
+	mp1->position = XMVectorSet(.11f,.1f,.1f,1.0f);
+	mp1->velocity = XMVectorSet(.0f,.0f,.0f,.0f);
 
-	g_MassSpringSystem.points.push_back(mp1);
-	g_MassSpringSystem.points.push_back(mp2);
+	mp2 = new MassPoint;
+	mp2->mass = 2.0f;
+	mp2->damping = 1.0f;
+	mp2->position = XMVectorSet(.09f,.2f,.1f,1.0f);
+	mp2->velocity = XMVectorSet(.0f,.0f,.0f,.0f);
 
-	Spring s(&g_MassSpringSystem.points[0], &g_MassSpringSystem.points[1], 25.0f);
+	g_MassSpringSystem->points.push_back(mp1);
+	g_MassSpringSystem->points.push_back(mp2);
 
-	g_MassSpringSystem.springs.push_back(s);
+	Spring* s = new Spring(mp1, mp2, 25.0f);
+	
+	g_MassSpringSystem->springs.push_back(s);
 }
 
 //--------------------------------------------------------------------------------------

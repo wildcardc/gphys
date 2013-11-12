@@ -13,7 +13,7 @@ public:
 	~MassSpringSystem(void);
 
 public:
-	vector<MassPoint> points;
-	vector<Spring> springs;
+	vector<MassPoint*> points;
+	vector<Spring*> springs;
 };
 

@@ -570,8 +570,8 @@ void Euler(float dt)
 	{
 		//calculate spring forces
 		float l = (*i)->currentLength();
-		if(l == 0)
-			l = .001f;
+		/*if(l == 0)
+			l = .001f;*/
 
 		XMVECTOR f = -(*i)->stiffness*(l - (*i)->initialLength) * ((*i)->point1->position - (*i)->point2->position) / l;
 

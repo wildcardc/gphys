@@ -69,7 +69,7 @@ bool g_bSimulationEnabled = true;
 
 // TweakAntBar GUI variables
 int   g_iNumSpheres    = 100;
-float g_fSphereSize    = 0.02f;
+float g_fSphereSize    = 0.04f;
 bool  g_bDrawTeapot    = false;
 bool  g_bDrawTriangle  = false;
 bool  g_bDrawSpheres   = false;
@@ -341,7 +341,7 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
     InitTweakBar(pd3dDevice);
 
     // Create DirectXTK geometric primitives for later usage
-    g_pSphere = GeometricPrimitive::CreateGeoSphere(pd3dImmediateContext, 2.0f, 2, false);
+    g_pSphere = GeometricPrimitive::CreateGeoSphere(pd3dImmediateContext, 1.0f, 2, false);
     g_pTeapot = GeometricPrimitive::CreateTeapot(pd3dImmediateContext, 1.5f, 8, false);
 
     // Create effect, input layout and primitive batch for position/color vertices (DirectXTK)
@@ -549,10 +549,36 @@ void DoPhysics(float dt)
 	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
     {
 		IntegratorFuncs[g_Integrator](g_TimeStep, *i);
+	}
 
-		// boundary check -y
+	// collisions
+	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
+    {
+		// boundary check -y; has to be done first for now
 		if(XMVectorGetY((*i)->position) < -.5f)
 			(*i)->position = XMVectorSetY((*i)->position, -.5f);
+
+		// really really crude MP-MP collision
+		for (auto j = i; ++j != g_MassSpringSystem->points.end(); )
+		{
+			assert(*i != *j);
+
+			auto d = (*i)->position - (*j)->position;
+			float l = XMVectorGetX(XMVector3Length(d));
+
+			if (l < g_fSphereSize)
+			{
+				// collision response away from Y plane
+				auto top = XMVectorGetY((*j)->position) < XMVectorGetY((*i)->position) ? *i : *j;
+				auto n = XMVector3Normalize(d);
+				auto respone = n * (g_fSphereSize - l);
+
+				if(XMVectorGetY(n) > 0)
+					top->position += respone;
+				else
+					top->position -= respone;
+			}
+		}
 	}
 }
 

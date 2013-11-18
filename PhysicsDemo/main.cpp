@@ -584,11 +584,9 @@ void Euler(float dt)
     {
 		//update forces with gravitation forces
 		(*i)->force += g_G * (*i)->mass - (*i)->damping * (*i)->velocity;
-
-		(*i)->position += (*i)->velocity * dt;
+		
 		//update velocity
 		(*i)->velocity += (*i)->force / (*i)->mass * dt;
-
 
 		//update positions
 		(*i)->position += dt * (*i)->velocity;

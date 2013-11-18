@@ -74,7 +74,7 @@ bool  g_bDrawTeapot    = false;
 bool  g_bDrawTriangle  = false;
 bool  g_bDrawSpheres   = false;
 
-XMVECTOR g_G = { .0f, -9.81f * .01f, .0f, .0f };
+XMVECTOR g_G = { .0f, -9.81f * .05f, .0f, .0f};
 
 float g_TimeStep = 1.0f/60.0f;
 float g_dT = .0f;
@@ -532,42 +532,69 @@ void DoPhysics(float dt)
 	
 		IntegratorFuncs[g_Integrator](g_TimeStep);
 
+		//boundary check
+		for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++) 
+		{
+			if(XMVectorGetY((*i)->position) < -.5f)
+			{
+				(*i)->position = XMVectorSetY((*i)->position, -.5f);
+			}
+		}
 		
 }
 
 void Euler(float dt)
 {
-	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
-    {
-		(*i)->force = g_G * (*i)->mass;
-	}
-
+	
+	//Update Springs
 	for (auto i = g_MassSpringSystem->springs.begin(); i != g_MassSpringSystem->springs.end(); i++)
-    {
+	{
+		//calculate spring forces
 		float l = (*i)->currentLength();
 		if(l == 0)
 			l = .001f;
 
 		XMVECTOR f = -(*i)->stiffness*(l - (*i)->initialLength) * ((*i)->point1->position - (*i)->point2->position) / l;
 
-		(*i)->point1->force += f;
-		(*i)->point2->force -= f;
+		//overwrite old forces with spring forces
+		(*i)->point1->force = f;
+		(*i)->point2->force = -f;
 	}
 
 	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
     {
-		// F = m*a; a = F/m
-		// F = F + Fd
-		// Fd = -d*v
-		XMVECTOR a = ( (*i)->force - (*i)->damping*(*i)->velocity ) / (*i)->mass;
+		//update forces with gravitation forces
+		(*i)->force += g_G * (*i)->mass - (*i)->damping * (*i)->velocity;
 
-		(*i)->position += (*i)->velocity * dt;
-		(*i)->velocity += a * dt;
+		//update velocity
+		(*i)->velocity += (*i)->force / (*i)->mass * dt;
 
-		// boundary check -y
-		if(XMVectorGetY((*i)->position) < -.5f)
-			(*i)->position = XMVectorSetY((*i)->position, -.5f);
+		//update positions
+		(*i)->position += dt * (*i)->velocity;
 	}
+
+
+	//for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
+ //   {
+	//	(*i)->force = g_G * (*i)->mass;
+	//}
+
+	
+
+	//for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
+ //   {
+	//	// F = m*a; a = F/m
+	//	// F = F + Fd
+	//	// Fd = -d*v
+	//	XMVECTOR a = ( (*i)->force - (*i)->damping*(*i)->velocity ) / (*i)->mass;
+
+	//	(*i)->position += (*i)->velocity * dt;
+	//	(*i)->velocity += a * dt;
+
+	//	// boundary check -y
+	//	if(XMVectorGetY((*i)->position) < -.5f)
+	//		(*i)->position = XMVectorSetY((*i)->position, -.5f);
+	//}
 }
 
 void MidPoint(float dt)

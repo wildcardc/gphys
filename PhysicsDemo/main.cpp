@@ -93,10 +93,10 @@ TwEnumVal twIntegratorEV[] = { {INTEGRATOR_EXPLICIT_EULER, "Explicit Euler"}, {I
 TwType integratorType;
 
 
-void Euler(float, MassPoint*);
-void MidPoint(float, MassPoint*);
+void Euler(float);
+void MidPoint(float);
 
-typedef void(*IntegratorPtr)(float, MassPoint*);
+typedef void(*IntegratorPtr)(float);
 IntegratorPtr IntegratorFuncs[] = { &Euler, &MidPoint};
 
 
@@ -529,27 +529,7 @@ LRESULT CALLBACK MsgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
 
 void DoPhysics(float dt)
 {
-	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
-    {
-		(*i)->force = g_G * (*i)->mass;
-	}
-
-	for (auto i = g_MassSpringSystem->springs.begin(); i != g_MassSpringSystem->springs.end(); i++)
-    {
-		float l = (*i)->currentLength();
-		if(l == 0)
-			l = .001f;
-
-		XMVECTOR f = -(*i)->stiffness*(l - (*i)->initialLength) * ((*i)->point1->position - (*i)->point2->position) / l;
-
-		(*i)->point1->force += f;
-		(*i)->point2->force -= f;
-	}
-
-	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
-    {
-		IntegratorFuncs[g_Integrator](g_TimeStep, *i);
-	}
+	IntegratorFuncs[g_Integrator](g_TimeStep);
 
 	// collisions
 	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
@@ -582,22 +562,42 @@ void DoPhysics(float dt)
 	}
 }
 
-void Euler(float dt, MassPoint* mp)
+void Euler(float dt)
 {
-	// F = m*a; a = F/m
-	// F = F + Fd
-	// Fd = -d*v
-	XMVECTOR a = ( mp->force - mp->damping*mp->velocity ) / mp->mass;
+	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
+    {
+		(*i)->force = g_G * (*i)->mass;
+	}
 
-	mp->position += mp->velocity * dt;
-	mp->velocity += a * dt;
+	for (auto i = g_MassSpringSystem->springs.begin(); i != g_MassSpringSystem->springs.end(); i++)
+    {
+		float l = (*i)->currentLength();
+		if(l == 0)
+			l = .001f;
+
+		XMVECTOR f = -(*i)->stiffness*(l - (*i)->initialLength) * ((*i)->point1->position - (*i)->point2->position) / l;
+
+		(*i)->point1->force += f;
+		(*i)->point2->force -= f;
+	}
+
+	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
+    {
+		// F = m*a; a = F/m
+		// F = F + Fd
+		// Fd = -d*v
+		XMVECTOR a = ( (*i)->force - (*i)->damping*(*i)->velocity ) / (*i)->mass;
+
+		(*i)->position += (*i)->velocity * dt;
+		(*i)->velocity += a * dt;
+	}
 }
 
-void MidPoint(float dt, MassPoint* mp)
+void MidPoint(float dt)
 {
-	XMVECTOR a = ( mp->force - mp->damping*mp->velocity ) / mp->mass;
+	/*XMVECTOR a = ( mp->force - mp->damping*mp->velocity ) / mp->mass;
 
-	XMVECTOR ytilde = mp->position + dt/2 * mp->velocity;
+	XMVECTOR ytilde = mp->position + dt/2 * mp->velocity;*/
 	//XMVECTOR vel_midpoint = mp->velocity + a_midpoint*dt/2; // this needs to calc a_midpoint with a "re-entrant" force calc somehow, if we are even right about how this should work
 	
 	//mp->position += dt * 

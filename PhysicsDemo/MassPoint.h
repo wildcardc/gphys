@@ -10,6 +10,8 @@ public:
 	MassPoint(void);
 	~MassPoint(void);
 
+	MassPoint(XMVECTOR position, float mass, float damping);
+
 	public:
 		XMVECTOR position;
 		XMVECTOR velocity;

@@ -2,23 +2,23 @@
 
 #include "MassPoint.h"
 #include <DirectXMath.h>
+#include <AntTweakBar.h>
+
+class MassSpringSystem;
 
 class Spring
 {
 public:
-	Spring(MassPoint* p1, MassPoint* p2, float k);
+	Spring(int p1, int p2, float k, MassSpringSystem* mss);
 	~Spring(void);
 
 	public:
-		MassPoint* point1;
-		MassPoint* point2;
+		int point1;
+		int point2;
 		float stiffness;
 		const float initialLength;
-		float currentLength();
+		float currentLength(MassSpringSystem* mss);
 
-		static void TW_CALL GetCurrentLengthCallback(void *value, void *clientData)
-		{
-			*static_cast<float *>(value) = static_cast<Spring*>(clientData)->currentLength();
-		} 
+	//static void TW_CALL GetCurrentLengthCallback(void *value, void *clientData);	
 };
 

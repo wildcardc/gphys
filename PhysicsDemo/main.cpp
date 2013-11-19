@@ -74,7 +74,7 @@ bool  g_bDrawTeapot    = false;
 bool  g_bDrawTriangle  = false;
 bool  g_bDrawSpheres   = false;
 
-XMVECTOR g_G = { .0f, -9.81f * .01f, .0f, .0f };
+XMVECTOR g_G = { .0f, -9.81f * .05f, .0f, .0f};
 
 float g_TimeStep = 1.0f/60.0f;
 float g_dT = .0f;
@@ -87,16 +87,16 @@ float g_dT = .0f;
 	INTEGRATOR_LAST,
  } Integrators;
 
-Integrators g_Integrator = INTEGRATOR_EXPLICIT_EULER;
+Integrators g_Integrator = INTEGRATOR_MIDPOINT;
  
 TwEnumVal twIntegratorEV[] = { {INTEGRATOR_EXPLICIT_EULER, "Explicit Euler"}, {INTEGRATOR_MIDPOINT, "Midpoint"} };
 TwType integratorType;
 
 
-void Euler(float);
-void MidPoint(float);
+MassSpringSystem* Euler(float, MassSpringSystem*);
+MassSpringSystem* MidPoint(float, MassSpringSystem*);
 
-typedef void(*IntegratorPtr)(float);
+typedef MassSpringSystem* (*IntegratorPtr)(float, MassSpringSystem*);
 IntegratorPtr IntegratorFuncs[] = { &Euler, &MidPoint};
 
 
@@ -225,8 +225,8 @@ void DrawMSS(ID3D11DeviceContext* pd3dImmediateContext)
 	for (auto i = g_MassSpringSystem->springs.begin(); i != g_MassSpringSystem->springs.end(); i++)
 	{
 		g_pPrimitiveBatchPositionColor->DrawLine(
-			VertexPositionColor((*i)->point1->position, Colors::Blue),
-			VertexPositionColor((*i)->point2->position, Colors::Blue));
+			VertexPositionColor(g_MassSpringSystem->points[(*i)->point1]->position, Colors::Blue),
+			VertexPositionColor(g_MassSpringSystem->points[(*i)->point2]->position, Colors::Blue));
 	}
 
     g_pPrimitiveBatchPositionColor->End();
@@ -398,12 +398,7 @@ void CALLBACK OnD3D11DestroyDevice( void* pUserContext )
 
 	SAFE_RELEASE(g_pEffect);
 	
-    TwDeleteBar(g_pTweakBar);
-
-	if(g_pMSSBar)
-		TwDeleteBar(g_pMSSBar);
-
-    g_pTweakBar = nullptr;
+    TwDeleteAllBars();
 	TwTerminate();
 
     g_pSphere.reset();
@@ -529,7 +524,7 @@ LRESULT CALLBACK MsgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
 
 void DoPhysics(float dt)
 {
-	IntegratorFuncs[g_Integrator](g_TimeStep);
+	g_MassSpringSystem = IntegratorFuncs[g_Integrator](g_TimeStep, g_MassSpringSystem);
 
 	// collisions
 	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
@@ -537,7 +532,7 @@ void DoPhysics(float dt)
 		// boundary check -y; has to be done first for now
 		if(XMVectorGetY((*i)->position) < -.5f)
 			(*i)->position = XMVectorSetY((*i)->position, -.5f);
-
+		
 		// really really crude MP-MP collision
 		for (auto j = i; ++j != g_MassSpringSystem->points.end(); )
 		{
@@ -562,45 +557,74 @@ void DoPhysics(float dt)
 	}
 }
 
-void Euler(float dt)
+void ApplyForces(MassSpringSystem* mss)
 {
-	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
-    {
-		(*i)->force = g_G * (*i)->mass;
-	}
-
-	for (auto i = g_MassSpringSystem->springs.begin(); i != g_MassSpringSystem->springs.end(); i++)
-    {
-		float l = (*i)->currentLength();
+	//Update Springs
+	for (auto i = mss->springs.begin(); i != mss->springs.end(); i++)
+	{
+		//calculate spring forces
+		float l = (*i)->currentLength(mss);
 		if(l == 0)
 			l = .001f;
 
-		XMVECTOR f = -(*i)->stiffness*(l - (*i)->initialLength) * ((*i)->point1->position - (*i)->point2->position) / l;
+		XMVECTOR f = -(*i)->stiffness*(l - (*i)->initialLength) * (mss->points[(*i)->point1]->position - mss->points[(*i)->point2]->position) / l;
 
-		(*i)->point1->force += f;
-		(*i)->point2->force -= f;
+		//overwrite old forces with spring forces
+		mss->points[(*i)->point1]->force = f;
+		mss->points[(*i)->point2]->force = -f;
 	}
 
-	for (auto i = g_MassSpringSystem->points.begin(); i != g_MassSpringSystem->points.end(); i++)
+	for (auto i = mss->points.begin(); i != mss->points.end(); i++)
     {
-		// F = m*a; a = F/m
-		// F = F + Fd
-		// Fd = -d*v
-		XMVECTOR a = ( (*i)->force - (*i)->damping*(*i)->velocity ) / (*i)->mass;
-
-		(*i)->position += (*i)->velocity * dt;
-		(*i)->velocity += a * dt;
+		//update forces with gravitation forces
+		//(*i)->force += g_G * (*i)->mass - (*i)->damping * (*i)->velocity;
+		(*i)->force -= (*i)->damping * (*i)->velocity;
 	}
+
+	// external forces..
 }
 
-void MidPoint(float dt)
+MassSpringSystem* Euler(float dt, MassSpringSystem* mss)
 {
-	/*XMVECTOR a = ( mp->force - mp->damping*mp->velocity ) / mp->mass;
+	MassSpringSystem* out_mss = new MassSpringSystem(*mss);
 
-	XMVECTOR ytilde = mp->position + dt/2 * mp->velocity;*/
-	//XMVECTOR vel_midpoint = mp->velocity + a_midpoint*dt/2; // this needs to calc a_midpoint with a "re-entrant" force calc somehow, if we are even right about how this should work
-	
-	//mp->position += dt * 
+	ApplyForces(out_mss);
+
+	for (auto i = out_mss->points.begin(); i != out_mss->points.end(); i++)
+    {
+		//update positions
+		(*i)->position += dt * (*i)->velocity;
+
+		//update velocity
+		(*i)->velocity += (*i)->force / (*i)->mass * dt + g_G * dt;
+	}
+
+	return out_mss;
+}
+
+/*MassSpringSystem* Heun(float dt, MassSpringSystem* mss)
+{>>
+
+}*/
+
+MassSpringSystem* MidPoint(float dt, MassSpringSystem* mss)
+{
+	MassSpringSystem* euler = Euler(dt/2, mss);
+
+	ApplyForces(euler);
+
+	for (int i = 0; i < mss->points.size(); i++)
+    {
+		//update positions
+		mss->points[i]->position += dt * euler->points[i]->velocity;
+
+		//update velocity
+		mss->points[i]->velocity += euler->points[i]->force / euler->points[i]->mass * dt + g_G * dt;
+	}
+
+	delete euler;
+
+	return mss;
 }
 
 //--------------------------------------------------------------------------------------
@@ -692,34 +716,33 @@ void InitMassSpringSystem()
 	if (g_MassSpringSystem != 0)
 		delete g_MassSpringSystem;
 
-	if (g_pMSSBar != 0)
+	g_MassSpringSystem = new MassSpringSystem;
+
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.0f,.1f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.1f,.1f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,.1f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.1f,.1f,1.0f), 1.0f, 1.0f));
+
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.0f,.0f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.1f,.0f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,.0f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.1f,.0f,1.0f), 1.0f, 1.0f));
+
+	for (int i = 0; i < g_MassSpringSystem->points.size(); i++)
+	{
+		for (int j = i + 1; j < g_MassSpringSystem->points.size(); j++)
+		{
+			Spring* s = new Spring(j,i,250.0f,g_MassSpringSystem);
+			g_MassSpringSystem->springs.push_back(s);
+		}
+	}
+
+	// something down here leaks
+	if (g_pMSSBar)
 		TwDeleteBar(g_pMSSBar);
 	
 	g_pMSSBar = TwNewBar("MSS");
 	TwDefine("MSS label='Mass Spring System' position='15 400' alpha=222 valueswidth=fit"); // yup magic values
-
-	g_MassSpringSystem = new MassSpringSystem;
-
-	MassPoint *mp1, *mp2;
-
-	mp1 = new MassPoint;
-	mp1->mass = 2.0f;
-	mp1->damping = 1.0f;
-	mp1->position = XMVectorSet(.11f,.1f,.1f,1.0f);
-	mp1->velocity = XMVectorSet(.0f,.0f,.0f,.0f);
-
-	mp2 = new MassPoint;
-	mp2->mass = 2.0f;
-	mp2->damping = 1.0f;
-	mp2->position = XMVectorSet(.09f,.2f,.1f,1.0f);
-	mp2->velocity = XMVectorSet(.0f,.0f,.0f,.0f);
-
-	g_MassSpringSystem->points.push_back(mp1);
-	g_MassSpringSystem->points.push_back(mp2);
-
-	Spring* s = new Spring(mp1, mp2, 25.0f);
-	
-	g_MassSpringSystem->springs.push_back(s);
 
 	char cnt[10];
 	int cc = 0;
@@ -760,9 +783,10 @@ void InitMassSpringSystem()
 		sprintf_s(str, "group='Spring %d' label='Initial Length'", i);
 		sprintf_s(cnt, "%d", cc++);
 		TwAddVarRO(g_pMSSBar, cnt,   TW_TYPE_FLOAT, &(g_MassSpringSystem->springs[i]->initialLength), str);
-		sprintf_s(str, "group='Spring %d' label='Current Length' readonly=true", i);
-		sprintf_s(cnt, "%d", cc++);
-		TwAddVarCB(g_pMSSBar, cnt,   TW_TYPE_FLOAT, 0, Spring::GetCurrentLengthCallback, g_MassSpringSystem->springs[i], str);
+
+		//sprintf_s(str, "group='Spring %d' label='Current Length' readonly=true", i);
+		//sprintf_s(cnt, "%d", cc++);
+		//TwAddVarCB(g_pMSSBar, cnt,   TW_TYPE_FLOAT, 0, Spring::GetCurrentLengthCallback, g_MassSpringSystem->springs[i], str);
 	}
 }
 

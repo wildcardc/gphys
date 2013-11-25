@@ -95,6 +95,7 @@ TwType integratorType;
 
 MassSpringSystem* Euler(float, MassSpringSystem*);
 MassSpringSystem* MidPoint(float, MassSpringSystem*);
+void ClearForces(MassSpringSystem* mss);
 
 typedef MassSpringSystem* (*IntegratorPtr)(float, MassSpringSystem*);
 IntegratorPtr IntegratorFuncs[] = { &Euler, &MidPoint};
@@ -524,6 +525,9 @@ LRESULT CALLBACK MsgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
 
 void DoPhysics(float dt)
 {
+	//clear forces
+	ClearForces(g_MassSpringSystem);
+
 	g_MassSpringSystem = IntegratorFuncs[g_Integrator](g_TimeStep, g_MassSpringSystem);
 
 	// collisions
@@ -557,8 +561,18 @@ void DoPhysics(float dt)
 	}
 }
 
+void ClearForces(MassSpringSystem* mss)
+{
+	for(auto i = mss->points.begin(); i != mss->points.end(); i++)
+	{
+		(*i)->force = XMVectorZero();
+	}
+}
+
 void ApplyForces(MassSpringSystem* mss)
 {
+
+	int k = 0;
 	//Update Springs
 	for (auto i = mss->springs.begin(); i != mss->springs.end(); i++)
 	{
@@ -570,17 +584,43 @@ void ApplyForces(MassSpringSystem* mss)
 		XMVECTOR f = -(*i)->stiffness*(l - (*i)->initialLength) * (mss->points[(*i)->point1]->position - mss->points[(*i)->point2]->position) / l;
 
 		//overwrite old forces with spring forces
-		mss->points[(*i)->point1]->force = f;
-		mss->points[(*i)->point2]->force = -f;
+		mss->points[(*i)->point1]->force += f;
+		mss->points[(*i)->point2]->force += -f;
+		k++;
 	}
 
 	for (auto i = mss->points.begin(); i != mss->points.end(); i++)
     {
 		//update forces with gravitation forces
-		//(*i)->force += g_G * (*i)->mass - (*i)->damping * (*i)->velocity;
 		(*i)->force -= (*i)->damping * (*i)->velocity;
+		//(*i)->force -= (*i)->damping * (*i)->force;
 	}
 
+	//old version -----------------------------------------------------------------
+	//int k = 0;
+	////Update Springs
+	//for (auto i = mss->springs.begin(); i != mss->springs.end(); i++)
+	//{
+	//	//calculate spring forces
+	//	float l = (*i)->currentLength(mss);
+	//	if(l == 0)
+	//		l = .001f;
+
+	//	XMVECTOR f = -(*i)->stiffness*(l - (*i)->initialLength) * (mss->points[(*i)->point1]->position - mss->points[(*i)->point2]->position) / l;
+
+	//	//overwrite old forces with spring forces
+	//	mss->points[(*i)->point1]->force = f;
+	//	mss->points[(*i)->point2]->force = -f;
+	//	k++;
+	//}
+
+	//for (auto i = mss->points.begin(); i != mss->points.end(); i++)
+ //   {
+	//	//update forces with gravitation forces
+	//	//(*i)->force += g_G * (*i)->mass - (*i)->damping * (*i)->velocity;
+	//	(*i)->force -= (*i)->damping * (*i)->velocity;
+	//}
+	
 	// external forces..
 }
 
@@ -590,14 +630,36 @@ MassSpringSystem* Euler(float dt, MassSpringSystem* mss)
 
 	ApplyForces(out_mss);
 
+	//just for debugging
+	int k = 0;
+
+	float x,y,z;
+
 	for (auto i = out_mss->points.begin(); i != out_mss->points.end(); i++)
     {
 		//update positions
 		(*i)->position += dt * (*i)->velocity;
 
 		//update velocity
-		(*i)->velocity += (*i)->force / (*i)->mass * dt + g_G * dt;
+		//m*a = Fint + Fext - y*v
+		//F = m * a = kg * m/s^2 - m/s * kg/s
+		//v = (Fint/m + Fext/m - yv) * dt
+		(*i)->velocity += ((*i)->force / (*i)->mass + g_G) * dt;
+
+
+		//DEBUG START
+		if(k == 5){
+		x = XMVectorGetX((*i)->force);
+		y = XMVectorGetY((*i)->force);
+		z = XMVectorGetZ((*i)->force);
+		}
+		k++;
+
+		//DEBUG END
+
 	}
+
+	
 
 	return out_mss;
 }
@@ -619,7 +681,8 @@ MassSpringSystem* MidPoint(float dt, MassSpringSystem* mss)
 		mss->points[i]->position += dt * euler->points[i]->velocity;
 
 		//update velocity
-		mss->points[i]->velocity += euler->points[i]->force / euler->points[i]->mass * dt + g_G * dt;
+		mss->points[i]->velocity = euler->points[i]->velocity;
+		//mss->points[i]->velocity += euler->points[i]->force / euler->points[i]->mass * dt + g_G * dt;
 	}
 
 	delete euler;
@@ -718,7 +781,20 @@ void InitMassSpringSystem()
 
 	g_MassSpringSystem = new MassSpringSystem;
 
-	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.0f,.1f,1.0f), 1.0f, 1.0f));
+	//Diamond ----------------------------------------------------------------------------------------
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.0f,.0f,1.0f), 1.0f, 1.0f));
+
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.1f,.0f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,-.1f,.0f,1.0f), 1.0f, 1.0f));
+
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,-.11f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,.1f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(-.1f,.0f,.1f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(-.1f,.0f,-.1f,1.0f), 1.0f, 1.0f));
+
+
+	//Cube--------------------------------------------------------------------------------------------
+	/*g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.0f,.1f,1.0f), 1.0f, 1.0f));
 	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.1f,.1f,1.0f), 1.0f, 1.0f));
 	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,.1f,1.0f), 1.0f, 1.0f));
 	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.1f,.1f,1.0f), 1.0f, 1.0f));
@@ -728,11 +804,38 @@ void InitMassSpringSystem()
 	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,.0f,1.0f), 1.0f, 1.0f));
 	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.1f,.0f,1.0f), 1.0f, 1.0f));
 
+
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.05f,.05f,.05f,1.0f), 1.0f, 1.0f));*/
+
+	/*g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.05f,.1f,.05f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.05f,.0f,.05f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.05f,.05f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.05f,.05f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.05f,.05f,.0f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.05f,.05f,.1f,1.0f), 1.0f, 1.0f));*/
+
+	
+	//Pyramid----------------------------------------------------------------------------------------
+	/*g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,.1f,1.0f), 1.0f, .999f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,-.1f,1.0f), 1.0f, .999f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(-.1f,.0f,.1f,1.0f), 1.0f, .999f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(-.1f,.0f,-.1f,1.0f), 1.0f, .999f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.5f,.0f,1.0f), 1.0f, .999f));*/
+
+	/*g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.1f,.0f,1.0f), 1.0f, 1));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.2f,.0f,1.0f), 1.0f, 1));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.3f,.0f,1.0f), 1.0f, 1));*/
+
+	/*Spring* s = new Spring(0,1,250.0f,g_MassSpringSystem);
+	Spring* s2 = new Spring(1,2,250.0f,g_MassSpringSystem);
+	g_MassSpringSystem->springs.push_back(s);
+	g_MassSpringSystem->springs.push_back(s2);*/
+	
 	for (int i = 0; i < g_MassSpringSystem->points.size(); i++)
 	{
 		for (int j = i + 1; j < g_MassSpringSystem->points.size(); j++)
 		{
-			Spring* s = new Spring(j,i,250.0f,g_MassSpringSystem);
+			Spring* s = new Spring(j,i,500,g_MassSpringSystem);
 			g_MassSpringSystem->springs.push_back(s);
 		}
 	}

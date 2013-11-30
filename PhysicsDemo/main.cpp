@@ -28,6 +28,7 @@ using namespace DirectX;
 #include "util/util.h"
 
 #include "MassSpringSystem.h"
+#include "RigidBody.h"
  
 // DXUT camera
 // NOTE: CModelViewerCamera does not only manage the standard view transformation/camera position 
@@ -58,12 +59,15 @@ PrimitiveBatch<VertexPositionNormal>* g_pPrimitiveBatchPositionNormal = nullptr;
 // DirectXTK simple geometric primitives
 std::unique_ptr<GeometricPrimitive> g_pSphere;
 std::unique_ptr<GeometricPrimitive> g_pTeapot;
+std::unique_ptr<GeometricPrimitive> g_pCube;
 
 // Movable object management
 XMINT2   g_viMouseDelta = XMINT2(0,0);
 XMFLOAT3 g_vfMovableObjectPos = XMFLOAT3(0,0,0);
 
 MassSpringSystem* g_MassSpringSystem = 0;
+
+std::vector<RigidBody*> g_RigidBodySystem;
 
 bool g_bSimulationEnabled = true;
 
@@ -83,25 +87,28 @@ float g_dT = .0f;
  {
 	INTEGRATOR_EXPLICIT_EULER = 0,
 	INTEGRATOR_MIDPOINT,
+	INTEGRATOR_LEAPFROG,
 	
 	INTEGRATOR_LAST,
  } Integrators;
 
-Integrators g_Integrator = INTEGRATOR_MIDPOINT;
+Integrators g_Integrator = INTEGRATOR_LEAPFROG;
  
-TwEnumVal twIntegratorEV[] = { {INTEGRATOR_EXPLICIT_EULER, "Explicit Euler"}, {INTEGRATOR_MIDPOINT, "Midpoint"} };
+TwEnumVal twIntegratorEV[] = { {INTEGRATOR_EXPLICIT_EULER, "Explicit Euler"}, {INTEGRATOR_MIDPOINT, "Midpoint"}, {INTEGRATOR_LEAPFROG, "Leapfrog"} };
 TwType integratorType;
 
 
 MassSpringSystem* Euler(float, MassSpringSystem*);
 MassSpringSystem* MidPoint(float, MassSpringSystem*);
+MassSpringSystem* LeapFrog(float, MassSpringSystem*);
 void ClearForces(MassSpringSystem* mss);
 
 typedef MassSpringSystem* (*IntegratorPtr)(float, MassSpringSystem*);
-IntegratorPtr IntegratorFuncs[] = { &Euler, &MidPoint};
+IntegratorPtr IntegratorFuncs[] = { &Euler, &MidPoint, &LeapFrog};
 
-
+void InitRigidBodySystem();
 void InitMassSpringSystem();
+
 // Create TweakBar and add required buttons and variables
 void InitTweakBar(ID3D11Device* pd3dDevice)
 {
@@ -195,6 +202,9 @@ void DrawFloor(ID3D11DeviceContext* pd3dImmediateContext)
 
 void DrawMSS(ID3D11DeviceContext* pd3dImmediateContext)
 {
+	if(!g_MassSpringSystem)
+		return;
+
     // Setup position/normal effect (constant variables)
     g_pEffectPositionNormal->SetEmissiveColor(Colors::Black);
     g_pEffectPositionNormal->SetSpecularColor(0.4f * Colors::White);
@@ -231,6 +241,24 @@ void DrawMSS(ID3D11DeviceContext* pd3dImmediateContext)
 	}
 
     g_pPrimitiveBatchPositionColor->End();
+}
+
+void DrawRBS(ID3D11DeviceContext* pd3dImmediateContext)
+{
+	for(auto i = g_RigidBodySystem.cbegin(); i != g_RigidBodySystem.cend(); i++)
+	{
+		g_pEffectPositionNormal->SetEmissiveColor(Colors::Black);
+		g_pEffectPositionNormal->SetDiffuseColor(0.6f * Colors::Cornsilk);
+		g_pEffectPositionNormal->SetSpecularColor(0.4f * Colors::White);
+		g_pEffectPositionNormal->SetSpecularPower(100);
+
+		XMMATRIX scale    = XMMatrixScalingFromVector((*i)->size);    
+		XMMATRIX trans    = XMMatrixTranslationFromVector((*i)->position);
+		g_pEffectPositionNormal->SetWorld(scale * trans);
+
+		// Draw
+		g_pCube->Draw(g_pEffectPositionNormal, g_pInputLayoutPositionNormal);
+	}
 }
 
 // Draw several objects randomly positioned in [-0.5f;0.5]³  using DirectXTK geometric primitives.
@@ -344,6 +372,7 @@ HRESULT CALLBACK OnD3D11CreateDevice( ID3D11Device* pd3dDevice, const DXGI_SURFA
     // Create DirectXTK geometric primitives for later usage
     g_pSphere = GeometricPrimitive::CreateGeoSphere(pd3dImmediateContext, 1.0f, 2, false);
     g_pTeapot = GeometricPrimitive::CreateTeapot(pd3dImmediateContext, 1.5f, 8, false);
+	g_pCube = GeometricPrimitive::CreateCube(pd3dImmediateContext, 1.0f, false);
 
     // Create effect, input layout and primitive batch for position/color vertices (DirectXTK)
     {
@@ -404,6 +433,7 @@ void CALLBACK OnD3D11DestroyDevice( void* pUserContext )
 
     g_pSphere.reset();
     g_pTeapot.reset();
+	g_pCube.reset();
     
     SAFE_DELETE (g_pPrimitiveBatchPositionColor);
     SAFE_RELEASE(g_pInputLayoutPositionColor);
@@ -523,7 +553,7 @@ LRESULT CALLBACK MsgProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
 	return 0;
 }
 
-void DoPhysics(float dt)
+void DoMSSPhysics(float dt)
 {
 	//clear forces
 	ClearForces(g_MassSpringSystem);
@@ -538,7 +568,7 @@ void DoPhysics(float dt)
 			(*i)->position = XMVectorSetY((*i)->position, -.5f);
 		
 		// really really crude MP-MP collision
-		for (auto j = i; ++j != g_MassSpringSystem->points.end(); )
+		for (auto j = i + 1; j != g_MassSpringSystem->points.end(); )
 		{
 			assert(*i != *j);
 
@@ -559,6 +589,31 @@ void DoPhysics(float dt)
 			}
 		}
 	}
+}
+
+void FixBoxCollision(RigidBody* a, RigidBody* b)
+{
+
+}
+
+void DoRBSPhysics(float dt)
+{
+	for(auto i = g_RigidBodySystem.cbegin(); i != g_RigidBodySystem.cend(); i++)
+	{
+		for(auto j = i + 1; j != g_RigidBodySystem.cend(); j++)
+		{
+			FixBoxCollision(*i, *j);
+			FixBoxCollision(*j, *i);
+		}
+	}
+}
+
+void DoPhysics(float dt)
+{
+	if(g_MassSpringSystem)
+		DoMSSPhysics(dt);
+
+	DoRBSPhysics(dt);
 }
 
 void ClearForces(MassSpringSystem* mss)
@@ -630,11 +685,6 @@ MassSpringSystem* Euler(float dt, MassSpringSystem* mss)
 
 	ApplyForces(out_mss);
 
-	//just for debugging
-	int k = 0;
-
-	float x,y,z;
-
 	for (auto i = out_mss->points.begin(); i != out_mss->points.end(); i++)
     {
 		//update positions
@@ -645,29 +695,32 @@ MassSpringSystem* Euler(float dt, MassSpringSystem* mss)
 		//F = m * a = kg * m/s^2 - m/s * kg/s
 		//v = (Fint/m + Fext/m - yv) * dt
 		(*i)->velocity += ((*i)->force / (*i)->mass + g_G) * dt;
-
-
-		//DEBUG START
-		if(k == 5){
-		x = XMVectorGetX((*i)->force);
-		y = XMVectorGetY((*i)->force);
-		z = XMVectorGetZ((*i)->force);
-		}
-		k++;
-
-		//DEBUG END
-
 	}
-
-	
 
 	return out_mss;
 }
 
-/*MassSpringSystem* Heun(float dt, MassSpringSystem* mss)
-{>>
+// invalid value to always trigger the initial leapfrog step
+Integrators g_PrevInt = INTEGRATOR_LAST;
 
-}*/
+MassSpringSystem* LeapFrog(float dt, MassSpringSystem* mss)
+{
+	ApplyForces(mss);
+
+	for (auto i = mss->points.begin(); i != mss->points.end(); i++)
+	{
+		// while this doesnt really seem to do much, we'll just keep it for now
+		if(g_PrevInt != INTEGRATOR_LEAPFROG)
+			(*i)->velocity += ((*i)->force / (*i)->mass + g_G) * dt/2;
+		else
+			(*i)->velocity += ((*i)->force / (*i)->mass + g_G) * dt;
+			
+		//update positions
+		(*i)->position += dt * (*i)->velocity;
+	}
+	
+	return mss;
+}
 
 MassSpringSystem* MidPoint(float dt, MassSpringSystem* mss)
 {
@@ -708,6 +761,8 @@ void CALLBACK OnFrameMove(double dTime, float fElapsedTime, void* pUserContext )
 			DoPhysics(g_TimeStep);
 			g_dT -= g_TimeStep;
 		}
+		
+		g_PrevInt = g_Integrator;
 	}
 
     // Update effects with new view + proj transformations
@@ -770,9 +825,18 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 
 	DrawMSS(pd3dImmediateContext);
 
+	DrawRBS(pd3dImmediateContext);
+
     // Draw GUI
     TwDraw();
 }
+
+void InitRigidBodySystem()
+{
+	g_RigidBodySystem.push_back(new RigidBody(XMVectorZero(),XMVectorSet(.1f,.1f,.1f,0),1));
+	g_RigidBodySystem.push_back(new RigidBody(XMVectorSet(.05f,.2f,0,1),XMVectorSet(.1f,.1f,.1f,0),1));
+}
+
 
 void InitMassSpringSystem()
 {
@@ -784,10 +848,10 @@ void InitMassSpringSystem()
 	//Diamond ----------------------------------------------------------------------------------------
 	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.0f,.0f,1.0f), 1.0f, 1.0f));
 
-	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.1f,.0f,1.0f), 1.0f, 1.0f));
-	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,-.1f,.0f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.075f,.0f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,-.075f,.0f,1.0f), 1.0f, 1.0f));
 
-	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,-.11f,1.0f), 1.0f, 1.0f));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,-.1f,1.0f), 1.0f, 1.0f));
 	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,.1f,1.0f), 1.0f, 1.0f));
 	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(-.1f,.0f,.1f,1.0f), 1.0f, 1.0f));
 	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(-.1f,.0f,-.1f,1.0f), 1.0f, 1.0f));
@@ -816,11 +880,11 @@ void InitMassSpringSystem()
 
 	
 	//Pyramid----------------------------------------------------------------------------------------
-	/*g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,.1f,1.0f), 1.0f, .999f));
-	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,-.1f,1.0f), 1.0f, .999f));
-	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(-.1f,.0f,.1f,1.0f), 1.0f, .999f));
-	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(-.1f,.0f,-.1f,1.0f), 1.0f, .999f));
-	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,.5f,.0f,1.0f), 1.0f, .999f));*/
+	/*g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,.1f,1.0f), 1.0f, 1));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.0f,-.1f,1.0f), 1.0f, 1));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(-.1f,.0f,.1f,1.0f), 1.0f, 1));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(-.1f,.0f,-.1f,1.0f), 1.0f, 1));
+	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.0f,-.25f,.0f,1.0f), 1.0f, 1));*/
 
 	/*g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.1f,.0f,1.0f), 1.0f, 1));
 	g_MassSpringSystem->points.push_back(new MassPoint(XMVectorSet(.1f,.2f,.0f,1.0f), 1.0f, 1));
@@ -839,7 +903,7 @@ void InitMassSpringSystem()
 			g_MassSpringSystem->springs.push_back(s);
 		}
 	}
-
+	
 	// something down here leaks
 	if (g_pMSSBar)
 		TwDeleteBar(g_pMSSBar);
@@ -937,7 +1001,8 @@ int main(int argc, char* argv[])
 	DXUTCreateWindow( L"PhysicsDemo" );
 	DXUTCreateDevice( D3D_FEATURE_LEVEL_10_0, true, 1280, 960 );
     
-	InitMassSpringSystem();
+	//InitMassSpringSystem();
+	InitRigidBodySystem();
 
 	DXUTMainLoop(); // Enter into the DXUT render loop
 

@@ -110,12 +110,14 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MassPoint.cpp" />
     <ClCompile Include="MassSpringSystem.cpp" />
+    <ClCompile Include="RigidBody.cpp" />
     <ClCompile Include="Spring.cpp" />
     <ClCompile Include="util\util.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MassPoint.h" />
     <ClInclude Include="MassSpringSystem.h" />
+    <ClInclude Include="RigidBody.h" />
     <ClInclude Include="Spring.h" />
     <ClInclude Include="util\util.h" />
   </ItemGroup>

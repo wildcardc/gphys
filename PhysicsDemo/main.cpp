@@ -29,6 +29,7 @@ using namespace DirectX;
 
 #include "MassSpringSystem.h"
 #include "RigidBody.h"
+#include "IPhysicSystem.h"
  
 // DXUT camera
 // NOTE: CModelViewerCamera does not only manage the standard view transformation/camera position 
@@ -68,6 +69,8 @@ XMFLOAT3 g_vfMovableObjectPos = XMFLOAT3(0,0,0);
 MassSpringSystem* g_MassSpringSystem = 0;
 
 std::vector<RigidBody*> g_RigidBodySystem;
+
+IPhysicSystem* g_PhysicSystem = new MassSpringSystem();
 
 bool g_bSimulationEnabled = true;
 

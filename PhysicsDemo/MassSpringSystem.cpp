@@ -35,3 +35,13 @@ MassSpringSystem::MassSpringSystem( const MassSpringSystem& other )
 	for(auto i = other.springs.cbegin(); i != other.springs.cend(); i++)
 		springs.push_back(new Spring(**i));
 }
+
+void MassSpringSystem::DoPhysics(double dt)
+{
+	;
+}
+
+void MassSpringSystem::DrawPhysicSystem(ID3D11DeviceContext* d3D11DeviceContext)
+{
+	;
+}

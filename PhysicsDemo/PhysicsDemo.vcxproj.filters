@@ -5,25 +5,54 @@
     <ClCompile Include="util\util.cpp">
       <Filter>util</Filter>
     </ClCompile>
-    <ClCompile Include="MassSpringSystem.cpp" />
-    <ClCompile Include="Spring.cpp" />
-    <ClCompile Include="MassPoint.cpp" />
-    <ClCompile Include="RigidBody.cpp" />
+    <ClCompile Include="MassPoint.cpp">
+      <Filter>MassSpringSystem</Filter>
+    </ClCompile>
+    <ClCompile Include="MassSpringSystem.cpp">
+      <Filter>MassSpringSystem</Filter>
+    </ClCompile>
+    <ClCompile Include="Spring.cpp">
+      <Filter>MassSpringSystem</Filter>
+    </ClCompile>
+    <ClCompile Include="RigidBody.cpp">
+      <Filter>RigidBodySystem</Filter>
+    </ClCompile>
+    <ClCompile Include="RigidBodySystem.cpp">
+      <Filter>RigidBodySystem</Filter>
+    </ClCompile>
+    <ClCompile Include="IPhysicSystem.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="util">
       <UniqueIdentifier>{ba535b4e-0c95-4992-8a48-6babc14c1f7c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="MassSpringSystem">
+      <UniqueIdentifier>{935a1cb9-20ea-496d-b329-9fa838f8cb33}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="RigidBodySystem">
+      <UniqueIdentifier>{68e2dcd7-54f6-43bc-897b-ae9adeb2099c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="util\util.h">
       <Filter>util</Filter>
     </ClInclude>
-    <ClInclude Include="MassSpringSystem.h" />
-    <ClInclude Include="Spring.h" />
-    <ClInclude Include="MassPoint.h" />
-    <ClInclude Include="RigidBody.h" />
     <ClInclude Include="IPhysicSystem.h" />
+    <ClInclude Include="MassPoint.h">
+      <Filter>MassSpringSystem</Filter>
+    </ClInclude>
+    <ClInclude Include="MassSpringSystem.h">
+      <Filter>MassSpringSystem</Filter>
+    </ClInclude>
+    <ClInclude Include="Spring.h">
+      <Filter>MassSpringSystem</Filter>
+    </ClInclude>
+    <ClInclude Include="RigidBody.h">
+      <Filter>RigidBodySystem</Filter>
+    </ClInclude>
+    <ClInclude Include="RigidBodySystem.h">
+      <Filter>RigidBodySystem</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="effect.fx" />

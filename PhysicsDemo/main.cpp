@@ -86,7 +86,7 @@ XMVECTOR g_G = { .0f, -9.81f * .05f, .0f, .0f};
 float g_TimeStep = 1.0f/60.0f;
 float g_dT = .0f;
 
- typedef enum
+ /*typedef enum
  {
 	INTEGRATOR_EXPLICIT_EULER = 0,
 	INTEGRATOR_MIDPOINT,
@@ -98,7 +98,7 @@ float g_dT = .0f;
 Integrators g_Integrator = INTEGRATOR_LEAPFROG;
  
 TwEnumVal twIntegratorEV[] = { {INTEGRATOR_EXPLICIT_EULER, "Explicit Euler"}, {INTEGRATOR_MIDPOINT, "Midpoint"}, {INTEGRATOR_LEAPFROG, "Leapfrog"} };
-TwType integratorType;
+TwType integratorType;*/
 
 
 MassSpringSystem* Euler(float, MassSpringSystem*);

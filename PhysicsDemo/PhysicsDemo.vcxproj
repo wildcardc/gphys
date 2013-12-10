@@ -107,10 +107,12 @@
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="IPhysicSystem.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MassPoint.cpp" />
     <ClCompile Include="MassSpringSystem.cpp" />
     <ClCompile Include="RigidBody.cpp" />
+    <ClCompile Include="RigidBodySystem.cpp" />
     <ClCompile Include="Spring.cpp" />
     <ClCompile Include="util\util.cpp" />
   </ItemGroup>
@@ -119,6 +121,7 @@
     <ClInclude Include="MassPoint.h" />
     <ClInclude Include="MassSpringSystem.h" />
     <ClInclude Include="RigidBody.h" />
+    <ClInclude Include="RigidBodySystem.h" />
     <ClInclude Include="Spring.h" />
     <ClInclude Include="util\util.h" />
   </ItemGroup>

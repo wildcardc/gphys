@@ -3,6 +3,7 @@
 
 RigidBodySystem::RigidBodySystem(void)
 {
+	g_G = XMVectorSet(.0f, -9.81f * .05f, .0f, .0f);
 }
 
 

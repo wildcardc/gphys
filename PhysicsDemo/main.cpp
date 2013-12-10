@@ -600,11 +600,22 @@ void DoRBSPhysics(float dt)
 {
 	for(auto i = g_RigidBodySystem.cbegin(); i != g_RigidBodySystem.cend(); i++)
 	{
+		for(int j = 0; j < 8; j++)
+		{
+
+		}
+	}
+	
+
+	for(auto i = g_RigidBodySystem.cbegin(); i != g_RigidBodySystem.cend(); i++)
+	{
+
 		for(auto j = i + 1; j != g_RigidBodySystem.cend(); j++)
 		{
 			FixBoxCollision(*i, *j);
 			FixBoxCollision(*j, *i);
 		}
+
 	}
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <DirectXMath.h>
+#include "RigidBodyMassPoint.h"
 
 using namespace DirectX;
 
@@ -14,6 +15,11 @@ public:
 	XMVECTOR size;
 	XMVECTOR velocity;
 	XMVECTOR forces;
+	RigidBodyMassPoint masspoints[8];
+	XMMATRIX i0Inverted;
+	XMMATRIX iInverted;
+	XMVECTOR angularMomentum;
+	XMVECTOR angularVelocity;
 	float mass;
 
 };

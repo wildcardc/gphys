@@ -599,10 +599,10 @@ bool FixBoxCollision(RigidBody* a, RigidBody* b)
 {
 	for(int i = 0; i < 8; i++)
 	{
-		//XMVECTOR tpos = a->masspoints[i].worldPosition - b->position;
-		//tpos = XMVector3Transform(tpos, XMMatrixInverse(0, XMMatrixRotationQuaternion(b->orientation)));
+		XMVECTOR tpos = a->masspoints[i] - b->position;
+		tpos = XMVector3Transform(tpos, XMMatrixInverse(0, XMMatrixRotationQuaternion(b->orientation)));
 		
-		//if(abs(XMVectorGetX(tpos)) <= XMVectorGetX(b->size)/2 && abs(XMVectorGetY(tpos)) <= XMVectorGetY(b->size)/2 && abs(XMVectorGetZ(tpos)) <= XMVectorGetZ(b->size)/2)
+		if(abs(XMVectorGetX(tpos)) <= XMVectorGetX(b->size)/2 && abs(XMVectorGetY(tpos)) <= XMVectorGetY(b->size)/2 && abs(XMVectorGetZ(tpos)) <= XMVectorGetZ(b->size)/2)
 			return true;
 	}
 
@@ -623,15 +623,14 @@ void DoRBSPhysics(float dt)
 	for (auto i = g_Contacts.cbegin(); i != g_Contacts.cend(); i++)
 	{
 		//angular momentum
-		//RigidBody bodyA = g_RigidBodySystem[(*i)->body1]->velocity;
+		RigidBody* bodyA = g_RigidBodySystem[(*i)->body1];
+		RigidBody* bodyB = g_RigidBodySystem[(*i)->body2];
 
-		XMVECTOR velocityA = g_RigidBodySystem[(*i)->body1]->velocity;
-		XMVECTOR velocityB = g_RigidBodySystem[(*i)->body2]->velocity;
-		XMVECTOR relativeVelocity = velocityA - velocityB;
+		XMVECTOR relativeVelocity = bodyA->velocity - bodyB->velocity;
 
-		
-
-		float angularMomentum = XMVectorGetX(XMVector3Dot((-1 * relativeVelocity),(*i)->normal))/();
+		XMVECTOR torqueA = XMVector3Cross(bodyA->position, XMVector3Transform(XMVector3Cross(bodyA->position, (*i)->normal), bodyA->i0Inverted));
+		XMVECTOR torqueB = XMVector3Cross(bodyB->position, XMVector3Transform(XMVector3Cross(bodyB->position, (*i)->normal), bodyB->i0Inverted));
+		float angularMomentum = XMVectorGetX(XMVector3Dot((-1 * relativeVelocity),(*i)->normal))/(1/(bodyA->mass) + 1/(bodyB->mass) + XMVectorGetX(XMVector3Dot((torqueA + torqueB),(*i)->normal)));
 	}
 
 	

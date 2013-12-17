@@ -1,6 +1,5 @@
 #include "RigidBody.h"
 
-
 RigidBody::RigidBody(XMVECTOR position, XMVECTOR size, float mass)
 	:position(position),size(size),mass(mass)
 {
@@ -33,7 +32,6 @@ RigidBody::RigidBody(XMVECTOR position, XMVECTOR size, float mass)
 			XMVectorGetZ(masspoints[i]) * XMVectorGetX(masspoints[i]),	XMVectorGetZ(masspoints[i]) * XMVectorGetY(masspoints[i]),	XMVectorGetZ(masspoints[i]) * XMVectorGetZ(masspoints[i]),	0,
 			0,															0,															0,															0);
 	}
-	i0Inverted = XMMatrixTranspose(i0Inverted);	//dämliche xmmatrix wird erst mit spalten initialisiert
 	i0Inverted *= mass/8.0f;
 	float trace = XMVectorGetX(i0Inverted.r[0]) + XMVectorGetY(i0Inverted.r[1]) + XMVectorGetZ(i0Inverted.r[2]);
 	i0Inverted = XMMatrixIdentity() * trace - i0Inverted;
@@ -61,6 +59,10 @@ RigidBody::RigidBody(XMVECTOR position, XMVECTOR size, float mass)
 
 }
 
+XMVECTOR RigidBody::masspoint_world(int i)
+{
+	return XMVector3Transform(this->masspoints[i], XMMatrixRotationQuaternion(this->orientation)) + this->position;
+}
 
 RigidBody::~RigidBody(void)
 {

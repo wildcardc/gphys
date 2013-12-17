@@ -1,7 +1,8 @@
 #pragma once
 
-#include <DirectXMath.h>
+#include "RigidBody.h"
 
+#include <DirectXMath.h>
 using namespace DirectX;
 
 class Contact
@@ -11,8 +12,8 @@ public:
 	~Contact(void);
 
 	XMVECTOR position;
+	RigidBody *a, *b;
 	XMVECTOR normal;
 	float depth;
-	int body1,body2;
 };
 

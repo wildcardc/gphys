@@ -69,7 +69,8 @@ XMFLOAT3 g_vfMovableObjectPos = XMFLOAT3(0,0,0);
 MassSpringSystem* g_MassSpringSystem = 0;
 
 std::vector<RigidBody*> g_RigidBodySystem;
-std::vector<Contact*> g_Contacts;
+
+std::vector<Contact> g_ContactsThisFrame;
 
 bool g_bSimulationEnabled = true;
 
@@ -245,6 +246,46 @@ void DrawMSS(ID3D11DeviceContext* pd3dImmediateContext)
     g_pPrimitiveBatchPositionColor->End();
 }
 
+void DrawContacts(ID3D11DeviceContext* pd3dImmediateContext)
+{
+    // Setup position/normal effect (constant variables)
+    g_pEffectPositionNormal->SetEmissiveColor(Colors::Black);
+    g_pEffectPositionNormal->SetSpecularColor(0.4f * Colors::White);
+    g_pEffectPositionNormal->SetSpecularPower(100);
+    
+	std::mt19937 eng;
+    std::uniform_real_distribution<float> randCol( 0.0f, 1.0f);
+	
+	for (auto i = g_ContactsThisFrame.cbegin(); i != g_ContactsThisFrame.cend(); i++)
+    {
+        // Setup position/normal effect (per object variables)
+        g_pEffectPositionNormal->SetDiffuseColor(0.6f * XMColorHSVToRGB(XMVectorSet(randCol(eng), 1, 1, 0)));
+        XMMATRIX scale    = XMMatrixScaling(g_fSphereSize, g_fSphereSize, g_fSphereSize);
+        XMMATRIX trans    = XMMatrixTranslation(XMVectorGetX(i->position), XMVectorGetY(i->position), XMVectorGetZ(i->position));
+        g_pEffectPositionNormal->SetWorld(scale * trans * g_camera.GetWorldMatrix());
+
+        // Draw
+        // NOTE: The following generates one draw call per object, so performance will be bad for n>>1000 or so
+        g_pSphere->Draw(g_pEffectPositionNormal, g_pInputLayoutPositionNormal);
+    }
+
+	g_pEffectPositionColor->SetWorld(g_camera.GetWorldMatrix());
+    g_pEffectPositionColor->Apply(pd3dImmediateContext);
+    pd3dImmediateContext->IASetInputLayout(g_pInputLayoutPositionColor);
+
+    // Draw
+    g_pPrimitiveBatchPositionColor->Begin();
+
+	for (auto i = g_ContactsThisFrame.cbegin(); i != g_ContactsThisFrame.cend(); i++)
+	{
+		g_pPrimitiveBatchPositionColor->DrawLine(
+			VertexPositionColor(i->position, Colors::Blue),
+			VertexPositionColor(i->position + i->normal, Colors::Blue));
+	}
+
+    g_pPrimitiveBatchPositionColor->End();
+}
+
 void DrawRBS(ID3D11DeviceContext* pd3dImmediateContext)
 {
 	for(auto i = g_RigidBodySystem.cbegin(); i != g_RigidBodySystem.cend(); i++)
@@ -254,9 +295,10 @@ void DrawRBS(ID3D11DeviceContext* pd3dImmediateContext)
 		g_pEffectPositionNormal->SetSpecularColor(0.4f * Colors::White);
 		g_pEffectPositionNormal->SetSpecularPower(100);
 
-		XMMATRIX scale    = XMMatrixScalingFromVector((*i)->size);    
+		XMMATRIX scale    = XMMatrixScalingFromVector((*i)->size);
+		XMMATRIX rot	  =  XMMatrixRotationQuaternion((*i)->orientation);
 		XMMATRIX trans    = XMMatrixTranslationFromVector((*i)->position);
-		g_pEffectPositionNormal->SetWorld(scale * trans);
+		g_pEffectPositionNormal->SetWorld(scale * rot * trans);
 
 		// Draw
 		g_pCube->Draw(g_pEffectPositionNormal, g_pInputLayoutPositionNormal);
@@ -593,17 +635,47 @@ void DoMSSPhysics(float dt)
 	}
 }
 
-bool g_ColTmp = false;
-
-bool FixBoxCollision(RigidBody* a, RigidBody* b)
+bool DetectBoxCollision(RigidBody* a, RigidBody* b)
 {
 	for(int i = 0; i < 8; i++)
 	{
-		XMVECTOR tpos = a->masspoints[i] - b->position;
+		XMVECTOR a_point_world = a->masspoint_world(i);
+		// translated into b's coordinate system (1)
+		XMVECTOR tpos = a_point_world - b->position;
+		// normalizing w in case it matters
+		tpos = XMVectorSetW(tpos, 1.0f);
+		// transformed into the world orientaion of b
 		tpos = XMVector3Transform(tpos, XMMatrixInverse(0, XMMatrixRotationQuaternion(b->orientation)));
 		
 		if(abs(XMVectorGetX(tpos)) <= XMVectorGetX(b->size)/2 && abs(XMVectorGetY(tpos)) <= XMVectorGetY(b->size)/2 && abs(XMVectorGetZ(tpos)) <= XMVectorGetZ(b->size)/2)
+		{
+			Contact c;
+			c.position = a_point_world;
+			
+			c.normal = XMVectorZero();
+			for(int p = 0; p < 6; p++)
+			{
+				XMVECTOR pn = XMVector3Cross(
+					b->masspoint_world(b->planes[p][0]) - b->masspoint_world(b->planes[p][1]),
+					b->masspoint_world(b->planes[p][0]) - b->masspoint_world(b->planes[p][2]));
+				
+				XMVECTOR pointonp = b->masspoint_world(b->planes[p][0]);
+				float dist = abs(XMVectorGetX(XMVector3Dot(a_point_world - pointonp, pn)));
+				
+				if(XMVectorGetX(XMVector3Length(c.normal)) == .0f || dist < c.depth)
+				{
+					c.normal = XMVector3Normalize(pn);
+					c.depth = dist;
+				}
+			}
+			
+			c.a = a;
+			c.b = b;
+		
+			g_ContactsThisFrame.push_back(c);
+		
 			return true;
+		}
 	}
 
 	return false;
@@ -620,38 +692,36 @@ void DoRBSPhysics(float dt)
 		(*i)->velocity += (g_G / (*i)->mass) * dt * dt;
 	}
 
-	for (auto i = g_Contacts.cbegin(); i != g_Contacts.cend(); i++)
+	for (auto i = g_ContactsThisFrame.cbegin(); i != g_ContactsThisFrame.cend(); i++)
 	{
 		//angular momentum
-		RigidBody* bodyA = g_RigidBodySystem[(*i)->body1];
-		RigidBody* bodyB = g_RigidBodySystem[(*i)->body2];
+		RigidBody* bodyA = i->a;
+		RigidBody* bodyB = i->b;
 
 		XMVECTOR relativeVelocity = bodyA->velocity - bodyB->velocity;
 
-		XMVECTOR torqueA = XMVector3Cross(bodyA->position, XMVector3Transform(XMVector3Cross(bodyA->position, (*i)->normal), bodyA->i0Inverted));
-		XMVECTOR torqueB = XMVector3Cross(bodyB->position, XMVector3Transform(XMVector3Cross(bodyB->position, (*i)->normal), bodyB->i0Inverted));
-		float angularMomentum = XMVectorGetX(XMVector3Dot((-1 * relativeVelocity),(*i)->normal))/(1/(bodyA->mass) + 1/(bodyB->mass) + XMVectorGetX(XMVector3Dot((torqueA + torqueB),(*i)->normal)));
+		XMVECTOR torqueA = XMVector3Cross(bodyA->position, XMVector3Transform(XMVector3Cross(bodyA->position, i->normal), bodyA->i0Inverted));
+		XMVECTOR torqueB = XMVector3Cross(bodyB->position, XMVector3Transform(XMVector3Cross(bodyB->position, i->normal), bodyB->i0Inverted));
+		float angularMomentum = XMVectorGetX(XMVector3Dot((-1 * relativeVelocity),i->normal))/(1/(bodyA->mass) + 1/(bodyB->mass) + XMVectorGetX(XMVector3Dot((torqueA + torqueB),i->normal)));
 	}
 
 	
-		
-	
-
+	g_ContactsThisFrame.clear();
 	for(auto i = g_RigidBodySystem.cbegin(); i != g_RigidBodySystem.cend(); i++)
 	{
 
 		for(auto j = i + 1; j != g_RigidBodySystem.cend(); j++)
 		{
-			g_ColTmp = FixBoxCollision(*i, *j) || FixBoxCollision(*j, *i);
+			if(!DetectBoxCollision(*i, *j))
+				DetectBoxCollision(*j, *i);
 		}
-
 	}
 }
 
 void DoPhysics(float dt)
 {
-	/*if(g_MassSpringSystem)
-		DoMSSPhysics(dt);*/
+	if(g_MassSpringSystem)
+		DoMSSPhysics(dt);
 
 	DoRBSPhysics(dt);
 }
@@ -862,10 +932,12 @@ void CALLBACK OnD3D11FrameRender( ID3D11Device* pd3dDevice, ID3D11DeviceContext*
 
     // Draw simple triangle
     if (g_bDrawTriangle) DrawTriangle(pd3dImmediateContext);
-
+	
 	DrawMSS(pd3dImmediateContext);
 
 	DrawRBS(pd3dImmediateContext);
+	
+	DrawContacts(pd3dImmediateContext);
 
     // Draw GUI
     TwDraw();
@@ -884,8 +956,9 @@ void InitRigidBodySystem()
 	TwDefine("RBS label='Rigid Body System' position='15 400' alpha=222 valueswidth=fit"); // yup magic values
 
 	TwAddVarRW(g_pMSSBar, "c1",   TW_TYPE_DIR3F, &(g_RigidBodySystem[0]->position), "");
+	TwAddVarRW(g_pMSSBar, "c1r",   TW_TYPE_QUAT4F, &(g_RigidBodySystem[0]->orientation), "");
 	TwAddVarRW(g_pMSSBar, "c2",   TW_TYPE_DIR3F, &(g_RigidBodySystem[1]->position), "");
-	TwAddVarRO(g_pMSSBar, "cc",   TW_TYPE_BOOLCPP, &(g_ColTmp), "");
+	TwAddVarRW(g_pMSSBar, "c2r",   TW_TYPE_QUAT4F, &(g_RigidBodySystem[1]->orientation), "");
 }
 
 

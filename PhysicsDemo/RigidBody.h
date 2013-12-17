@@ -22,5 +22,6 @@ public:
 	XMVECTOR angularVelocity;
 	float mass;
 
+	XMVECTOR masspoint_world(int i);
 };
 

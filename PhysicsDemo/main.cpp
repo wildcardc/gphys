@@ -29,6 +29,7 @@ using namespace DirectX;
 
 #include "MassSpringSystem.h"
 #include "RigidBody.h"
+#include "Contact.h"
  
 // DXUT camera
 // NOTE: CModelViewerCamera does not only manage the standard view transformation/camera position 
@@ -68,6 +69,7 @@ XMFLOAT3 g_vfMovableObjectPos = XMFLOAT3(0,0,0);
 MassSpringSystem* g_MassSpringSystem = 0;
 
 std::vector<RigidBody*> g_RigidBodySystem;
+std::vector<Contact*> g_Contacts;
 
 bool g_bSimulationEnabled = true;
 
@@ -597,10 +599,10 @@ bool FixBoxCollision(RigidBody* a, RigidBody* b)
 {
 	for(int i = 0; i < 8; i++)
 	{
-		XMVECTOR tpos = a->masspoints[i].worldPosition - b->position;
-		tpos = XMVector3Transform(tpos, XMMatrixInverse(0, XMMatrixRotationQuaternion(b->orientation)));
+		//XMVECTOR tpos = a->masspoints[i].worldPosition - b->position;
+		//tpos = XMVector3Transform(tpos, XMMatrixInverse(0, XMMatrixRotationQuaternion(b->orientation)));
 		
-		if(abs(XMVectorGetX(tpos)) <= XMVectorGetX(b->size)/2 && abs(XMVectorGetY(tpos)) <= XMVectorGetY(b->size)/2 && abs(XMVectorGetZ(tpos)) <= XMVectorGetZ(b->size)/2)
+		//if(abs(XMVectorGetX(tpos)) <= XMVectorGetX(b->size)/2 && abs(XMVectorGetY(tpos)) <= XMVectorGetY(b->size)/2 && abs(XMVectorGetZ(tpos)) <= XMVectorGetZ(b->size)/2)
 			return true;
 	}
 
@@ -611,11 +613,29 @@ void DoRBSPhysics(float dt)
 {
 	for(auto i = g_RigidBodySystem.cbegin(); i != g_RigidBodySystem.cend(); i++)
 	{
-		for(int j = 0; j < 8; j++)
-		{
+		//gravitation
+		(*i)->forces = g_G * (*i)->mass;
 
-		}
+		//velocity
+		(*i)->velocity += (g_G / (*i)->mass) * dt * dt;
 	}
+
+	for (auto i = g_Contacts.cbegin(); i != g_Contacts.cend(); i++)
+	{
+		//angular momentum
+		//RigidBody bodyA = g_RigidBodySystem[(*i)->body1]->velocity;
+
+		XMVECTOR velocityA = g_RigidBodySystem[(*i)->body1]->velocity;
+		XMVECTOR velocityB = g_RigidBodySystem[(*i)->body2]->velocity;
+		XMVECTOR relativeVelocity = velocityA - velocityB;
+
+		
+
+		float angularMomentum = XMVectorGetX(XMVector3Dot((-1 * relativeVelocity),(*i)->normal))/();
+	}
+
+	
+		
 	
 
 	for(auto i = g_RigidBodySystem.cbegin(); i != g_RigidBodySystem.cend(); i++)
@@ -631,8 +651,8 @@ void DoRBSPhysics(float dt)
 
 void DoPhysics(float dt)
 {
-	if(g_MassSpringSystem)
-		DoMSSPhysics(dt);
+	/*if(g_MassSpringSystem)
+		DoMSSPhysics(dt);*/
 
 	DoRBSPhysics(dt);
 }

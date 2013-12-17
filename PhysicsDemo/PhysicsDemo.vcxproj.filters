@@ -8,6 +8,9 @@
     <ClCompile Include="MassSpringSystem.cpp" />
     <ClCompile Include="Spring.cpp" />
     <ClCompile Include="MassPoint.cpp" />
+    <ClCompile Include="RigidBody.cpp" />
+    <ClCompile Include="RigidBodyMassPoint.cpp" />
+    <ClCompile Include="Contact.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="util">
@@ -21,6 +24,9 @@
     <ClInclude Include="MassSpringSystem.h" />
     <ClInclude Include="Spring.h" />
     <ClInclude Include="MassPoint.h" />
+    <ClInclude Include="RigidBody.h" />
+    <ClInclude Include="RigidBodyMassPoint.h" />
+    <ClInclude Include="Contact.h" />
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="effect.fx" />

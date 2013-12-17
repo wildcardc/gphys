@@ -7,6 +7,7 @@ class RigidBodyMassPoint
 {
 public:
 	RigidBodyMassPoint(XMVECTOR localPosition, XMVECTOR worldPosition, float mass);
+	RigidBodyMassPoint();
 	~RigidBodyMassPoint(void);
 
 	XMVECTOR localPosition;

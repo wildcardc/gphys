@@ -8,6 +8,9 @@ RigidBodyMassPoint::RigidBodyMassPoint(XMVECTOR localPosition, XMVECTOR worldPos
 	force = XMVectorZero();
 }
 
+RigidBodyMassPoint::RigidBodyMassPoint()
+{
+}
 
 RigidBodyMassPoint::~RigidBodyMassPoint(void)
 {

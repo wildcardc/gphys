@@ -591,9 +591,20 @@ void DoMSSPhysics(float dt)
 	}
 }
 
-void FixBoxCollision(RigidBody* a, RigidBody* b)
-{
+bool g_ColTmp = false;
 
+bool FixBoxCollision(RigidBody* a, RigidBody* b)
+{
+	for(int i = 0; i < 8; i++)
+	{
+		XMVECTOR tpos = a->masspoints[i].worldPosition - b->position;
+		tpos = XMVector3Transform(tpos, XMMatrixInverse(0, XMMatrixRotationQuaternion(b->orientation)));
+		
+		if(abs(XMVectorGetX(tpos)) <= XMVectorGetX(b->size)/2 && abs(XMVectorGetY(tpos)) <= XMVectorGetY(b->size)/2 && abs(XMVectorGetZ(tpos)) <= XMVectorGetZ(b->size)/2)
+			return true;
+	}
+
+	return false;
 }
 
 void DoRBSPhysics(float dt)
@@ -612,8 +623,7 @@ void DoRBSPhysics(float dt)
 
 		for(auto j = i + 1; j != g_RigidBodySystem.cend(); j++)
 		{
-			FixBoxCollision(*i, *j);
-			FixBoxCollision(*j, *i);
+			g_ColTmp = FixBoxCollision(*i, *j) || FixBoxCollision(*j, *i);
 		}
 
 	}
@@ -846,6 +856,17 @@ void InitRigidBodySystem()
 {
 	g_RigidBodySystem.push_back(new RigidBody(XMVectorZero(),XMVectorSet(.1f,.1f,.1f,0),1));
 	g_RigidBodySystem.push_back(new RigidBody(XMVectorSet(.05f,.2f,0,1),XMVectorSet(.1f,.1f,.1f,0),1));
+
+
+	if (g_pMSSBar)
+		TwDeleteBar(g_pMSSBar);
+	
+	g_pMSSBar = TwNewBar("RBS");
+	TwDefine("RBS label='Rigid Body System' position='15 400' alpha=222 valueswidth=fit"); // yup magic values
+
+	TwAddVarRW(g_pMSSBar, "c1",   TW_TYPE_DIR3F, &(g_RigidBodySystem[0]->position), "");
+	TwAddVarRW(g_pMSSBar, "c2",   TW_TYPE_DIR3F, &(g_RigidBodySystem[1]->position), "");
+	TwAddVarRO(g_pMSSBar, "cc",   TW_TYPE_BOOLCPP, &(g_ColTmp), "");
 }
 
 
